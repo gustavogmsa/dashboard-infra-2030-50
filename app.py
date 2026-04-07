@@ -19,10 +19,18 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import gdown
 
 # =============================================================================
 # Dados
 # =============================================================================
+
+# Cole o ID do seu arquivo aqui
+FILE_ID = '14GwVAdntetbw_H07TS8qAKpCTWDdCXtT'
+
+# Baixa o arquivo localmente na primeira execução
+gdown.download(f'https://drive.google.com/uc?id={FILE_ID}', 'infra_final.csv', quiet=False)
+
 
 infra = pd.read_csv('infra_final.csv', sep=',')
 
