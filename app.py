@@ -20,22 +20,33 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import gdown
+import os
 
 # =============================================================================
 # Dados
 # =============================================================================
 
-# Cole o ID do seu arquivo aqui
-FILE_ID = '14GwVAdntetbw_H07TS8qAKpCTWDdCXtT'
 
-# Baixa o arquivo localmente na primeira execução
-gdown.download(f'https://drive.google.com/uc?id={FILE_ID}', 'infra_final.csv', quiet=False)
+FILE_ID   = '1AZQ2guF-2mSBqemAvQoWZXyNVHeyHTY4'  
+FILENAME  = 'infra_final.csv.gz'
 
+# ✅ Só baixa se o arquivo ainda não existir (evita re-download a cada restart local)
+if not os.path.exists(FILENAME):
+    print("Baixando CSV do Google Drive...")
+    gdown.download(f'https://drive.google.com/uc?id={FILE_ID}', FILENAME, quiet=False)
+else:
+    print("CSV já existe localmente, pulando download.")
 
-infra = pd.read_csv('infra_final.csv', sep=',')
+infra = pd.read_csv(FILENAME, sep=',', compression='gzip')
+
+# Mapeia cenário antes de qualquer groupby
+infra['cenario'] = infra['cenario'].map({
+    'base':          'Base',
+    'transformador': 'Otimista'
+})
 
 total_por_produto = infra.groupby(['macro_produto', 'Ano', 'cenario'])['toneladas'].sum().reset_index()
-total_por_produto['milhoes_de_toneladas'] = (total_por_produto['toneladas'] / 1000000).round(2)
+total_por_produto['milhoes_de_toneladas'] = (total_por_produto['toneladas'] / 1_000_000).round(2)
 
 total_por_produto = total_por_produto.rename(columns={
     'macro_produto':        'Produtos',
@@ -46,19 +57,8 @@ total_por_produto['Produtos'] = total_por_produto['Produtos'].replace({
     'Embalagens plásticas, botijões para gás, pallets de madeira e garrafas de vidro': 'Embalagens e Recipientes'
 })
 
-total_por_produto = total_por_produto.assign(
-    cenario=lambda x: x['cenario'].map({
-        'base':          'Base',
-        'transformador': 'Otimista'
-    })
-)
-
 dados_finais = infra.copy()
-dados_finais['milhoes_ton'] = (dados_finais['toneladas'] / 1000000).round(2)
-dados_finais['cenario'] = dados_finais['cenario'].map({
-    'base':          'Base',
-    'transformador': 'Otimista'
-})
+dados_finais['milhoes_ton'] = (dados_finais['toneladas'] / 1_000_000).round(2)
 
 resumo = total_por_produto.groupby(['Ano', 'cenario'])['Milhões de Toneladas'].sum().reset_index()
 
@@ -78,7 +78,8 @@ cagr_otimista = ((total_otimista_2050 / total_otimista_2030) ** (1/n) - 1) * 100
 # Desenvolvimento do Dashboard
 # =============================================================================
 
-app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
+app    = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
+server = app.server  # ✅ obrigatório para o Render/gunicorn
 
 app.layout = html.Div([
 
@@ -152,7 +153,7 @@ app.layout = html.Div([
                         'marginBottom': '10px'
                     }
                 ),
-                dcc.Download(id='download-csv')  # ✅ componente invisível de download
+                dcc.Download(id='download-csv')
             ]),
             html.Div(id='espaco-grafico')
         ], style={"backgroundColor": "black", "padding": "20px"}, width=6),
@@ -177,7 +178,7 @@ app.layout = html.Div([
 
     ]),
 
-    # ✅ 2ª Linha — Gráfico de Linha
+    # 2ª Linha — Gráfico de Linha
     dbc.Row([
         dbc.Col([
             html.Div(id='espaco-linha')
@@ -210,7 +211,7 @@ def atualizar_grafico(dummy):
         .index.tolist()
     )
 
-    # ✅ '<br>' correto para quebra de linha
+    # ✅ '<br>' correto para quebra de linha no eixo X
     ordem_display = [p.replace(' ', '<br>', 2) for p in ordem]
 
     base_2030     = df_top_10[(df_top_10['Ano'] == 2030) & (df_top_10['cenario'] == 'Base')]
@@ -226,7 +227,6 @@ def atualizar_grafico(dummy):
 
     fig = go.Figure()
 
-    # ✅ hovertemplate personalizado em todos os 4 traces
     fig.add_trace(go.Bar(
         name='Base 2030',
         x=merged_2030['Produtos'],
@@ -295,7 +295,7 @@ def atualizar_grafico(dummy):
 )
 def atualizar_matriz(cenario_selecionado):
 
-    df       = dados_finais[dados_finais['cenario'] == cenario_selecionado]
+    df        = dados_finais[dados_finais['cenario'] == cenario_selecionado]
     dados_ano = df[df['Ano'] == 2030]
 
     matriz = pd.pivot_table(
@@ -323,7 +323,7 @@ def atualizar_matriz(cenario_selecionado):
     return dcc.Graph(figure=fig)
 
 # ============================================================
-# Callback 3 — Download CSV  
+# Callback 3 — Download CSV
 # ============================================================
 
 @app.callback(
@@ -339,7 +339,7 @@ def exportar_csv(n_clicks):
     )
 
 # ============================================================
-# Callback 4 — Gráfico de Linha  
+# Callback 4 — Gráfico de Linha
 # ============================================================
 
 @app.callback(
